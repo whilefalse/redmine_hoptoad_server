@@ -11,11 +11,11 @@ class NoticesController < ApplicationController
   ]
 
   def index
-    notice = YAML.load(request.raw_post)['notice']
-    redmine_params = YAML.load(notice['api_key'])
-    
-    if authorized = Setting.mail_handler_api_key == redmine_params[:api_key]
+    notice = YAML.load(request.raw_post)['notice']    
+    redmine_params = {}
+    notice['api_key'].map {|k,v| redmine_params[k.to_sym] = v}
 
+    if authorized = Setting.mail_handler_api_key == redmine_params[:api_key]
       # redmine objects
       project = Project.find_by_identifier(redmine_params[:project])
       tracker = project.trackers.find_by_name(redmine_params[:tracker])
@@ -31,11 +31,16 @@ class NoticesController < ApplicationController
       filtered_backtrace = backtrace.reject{|line| (TRACE_FILTERS+project_trace_filters).map{|filter| line.scan(filter)}.flatten.compact.uniq.any?}
       
       # build subject by removing method name and '[RAILS_ROOT]', make sure it fits in a varchar
-      subject = "#{error_class} in #{filtered_backtrace.first.split(':in').first.gsub('[RAILS_ROOT]','')}"[0,255]
+      if !filtered_backtrace.empty?
+        subject = "#{error_class} in #{filtered_backtrace.first.split(':in').first.gsub('[RAILS_ROOT]','')}"[0,255]
+      else
+        subject = error_class
+      end
+
       
       # build description including a link to source repository
       repo_root = project.custom_value_for(@repository_root_field).value.gsub(/\/$/,'') rescue nil
-      repo_file, repo_line = filtered_backtrace.first.split(':in').first.gsub('[RAILS_ROOT]','').gsub(/^\//,'').split(':')
+      repo_file, repo_line = filtered_backtrace.first.split(':in').first.gsub('[RAILS_ROOT]','').gsub(/^\//,'').split(':') rescue nil
       description = "Redmine Notifier reported an Error related to source:#{repo_root}/#{repo_file}#L#{repo_line}"
 
       issue = Issue.find_or_initialize_by_subject_and_project_id_and_tracker_id_and_author_id(
@@ -70,15 +75,11 @@ class NoticesController < ApplicationController
       logger.error value.value
       value.save!
 
+
       # update journal
       journal = issue.init_journal(
-        author, 
-        "h4. Error message\n\n<pre>#{error_message}</pre>\n\n" +
-        "h4. Filtered backtrace\n\n<pre>#{filtered_backtrace.to_yaml}</pre>\n\n" +
-        "h4. Full backtrace\n\n<pre>#{backtrace.to_yaml}</pre>\n\n" +
-        "h4. Request\n\n<pre>#{notice['request'].to_yaml}</pre>\n\n" +
-        "h4. Session\n\n<pre>#{notice['session'].to_yaml}</pre>\n\n" +
-        "h4. Environment\n\n<pre>#{notice['environment'].to_yaml}</pre>"
+        author,
+        "#{error_message}"
       )
 
       # reopen issue
