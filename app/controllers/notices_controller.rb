@@ -41,7 +41,7 @@ class NoticesController < ApplicationController
       # build description including a link to source repository
       repo_root = project.custom_value_for(@repository_root_field).value.gsub(/\/$/,'') rescue nil
       repo_file, repo_line = filtered_backtrace.first.split(':in').first.gsub('[RAILS_ROOT]','').gsub(/^\//,'').split(':') rescue nil
-      description = "Redmine Notifier reported an Error related to source:#{repo_root}/#{repo_file}#L#{repo_line}"
+      description = "Automated Redmine error notification"
 
       issue = Issue.find_or_initialize_by_subject_and_project_id_and_tracker_id_and_author_id(
         subject,
